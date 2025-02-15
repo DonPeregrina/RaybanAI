@@ -1,114 +1,113 @@
-# Meta Vision 
-### Meta Glasses GPT4 Vision API Implementation
+# RaybanAI
+### Meta Rayban Smart Glasses GPT4 Vision API Implementation
 
-This is a hacky way to integrate GPT4 Vision into the Meta Rayban Smart Glasses using voice commands.
+A Node.js implementation for integrating GPT4 Vision into Meta Rayban Smart Glasses using voice commands. This project is based on the original [Meta Vision](https://github.com/dcrebbin/meta-vision) by [Devon Crebbin](https://github.com/dcrebbin).
 
-[Example Demonstration](https://www.youtube.com/watch?v=PiEDrcLCmew)
+## Requirements
 
-Requirements:
+- [Meta Rayban Smart Glasses](https://about.fb.com/news/2023/09/new-ray-ban-meta-smart-glasses/)
+- [OpenAI API Key](https://platform.openai.com/)
+- Alternative Facebook/Messenger account
+- Node.js (version 14 or higher)
 
-a) [Meta Rayban Smart Glasses](https://about.fb.com/news/2023/09/new-ray-ban-meta-smart-glasses/)
+## Installation
 
-b) [OpenAi Api Key](https://platform.openai.com/)
+### Linux
 
-c) Alternative Facebook/Messenger account
-
-d) [bun](https://bun.sh/)
-
-### Setup
-
-#### Get the server up and running:
-
-1) Add a .env file with your OpenAi API key (example via ``env.example``)
-
-2) Run ``bun install``
-
-3) Run ``bun run dev``
-
-4) Server should be up and running on PORT 3103
-
-#### Add the Messenger Chat Observer:
-
-**WARNING**: bookmarklets are a slightly obscure and very hacky way to execute arbitrary javascript in your browser, before running **MAKE SURE** to check the code you're executing. 
-The bookmarklet code is documented below in the section titled: **Bookmarklet Code Breakdown**
-
-1) Login to [messenger.com](https://www.messenger.com) with an alternative messenger/facebook account (make sure you are friends with your main account that's logged into your meta view app)
-
-2) Copy and paste the code from ``bookmarklet.js`` and create a new bookmark in your browser with the URL as the code (alternatively import it as a bookmark)
-
-3) Click the newly created bookmark
-
-4) Upon success a dialog should appear with **Added Messenger Chat Observer**
-
-#### Test the integration:
-
-1) Make sure within the Meta View app that the messenger connection is connected to the appropriate main account
-
-2) Say ``You: Hey Meta, send a photo to *name of alternative account*``
-
-3) `Meta: Send a photo to *name of alternative account*`
-
-4) ``You: Yes``
-
-5) Upon receiving the new photo and sending it to GPT4 Vision the server should display the following logs:
-
-```
-GPT4 Vision Request
-Sending request to GPT4 Vision
-Request Successful
-Saving data
-Reading stored data
-Creating new data file.
-Writing new data
-```
-6) Open up ``./public/data.json`` to check the successful added data
-
-ENJOY!
-
-#### Bookmarklet Code Breakdown:
-
-```javascript
-javascript: (function (s) {
-  //This a bookmarklet that you can either import as a bookmark
-  //OR you can copy all the code and paste into the URL when making a new bookmark
-  //OR post in dev console
-
-  // This is designed to observe for any new photo messages that are sent in messenger and then to forward the image url to this projects REST api
-
-  const messages = document.getElementsByClassName("x78zum5 xdt5ytf x1iyjqo2 xs83m0k x1xzczws x6ikm8r x1rife3k x1n2onr6 xh8yej3")[1].childNodes[2];
-
-  // This is to find the messages container within messenger.com for the selected chat
-
-  // However, these obfuscated classes are subject to change and so this is likely to break in the near future
-
-  messages.removeEventListener("DOMNodeInserted", null);
-
-  // The utilization of DOMNodeInserted is very bad practice and will be deprecated in all browsers in the future
-
-  // Mutation observer should replace DOMNodeInserted
-  messages.addEventListener("DOMNodeInserted", async (event) => {
-    const imgSrc = event?.target?.getElementsByTagName("img")[1]?.src;
-    if (imgSrc) {
-      const res = await fetch("http://localhost:3103/api/gpt-4-vision", {
-        method: "POST",
-
-        //Facebook's image urls contains lots of properties that need to be perfectly preserved in order to view the image
-        body: JSON.stringify({ imageUrl: imgSrc }),
-        mode: "no-cors",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-      const data = res.json();
-      console.log(data);
-    }
-  });
-  alert("Added Messenger Chat Observer");
-})();
+1. Clone the repository
+2. Navigate to the RaybanAI directory
+3. Run the installation script:
+```bash
+chmod +x 1-setup.sh
+./1-setup.sh
 ```
 
-by [Devon Crebbin](https://github.com/dcrebbin)
+This will install all necessary dependencies and set up your environment.
 
-Please reach out if there are any issues or feature requests :)
+### Windows
 
-Hopefully the Meta Reality Labs team will provide an SDK in the future so these types of integrations can be ✨productionised✨
+1. Install [Node.js](https://nodejs.org/)
+2. Clone the repository
+3. Navigate to the RaybanAI directory
+4. Open PowerShell as administrator and run:
+```powershell
+npm install
+```
+5. Create a `.env` file with your OpenAI API key:
+```
+OPENAI_API_KEY=your-key-here
+```
+
+## Configuration
+
+1. Add your OpenAI API key to the `.env` file
+2. Start the server:
+   - Linux: `./2-testserver.sh`
+   - Windows: `node backend/index.js`
+
+## Testing
+
+### Test the API
+Run the test script to verify everything is working:
+
+Linux:
+```bash
+./2-testserver.sh
+```
+
+Example output:
+```
+[RaybanAI Test] Testing RaybanAI API
+[RaybanAI Test] Image: Mexican Green Chilaquiles
+[RaybanAI Test] URL: https://patijinich.com/wp-content/uploads/2012/10/04_GreenChilaquilesRoastedTomatilloSauce_101_Cropped-copy.jpg
+[✔] Request successful!
+Response:
+{
+   "response" : "The image shows a skillet containing chilaquiles. This dish is a traditional Mexican breakfast featuring tortilla chips smothered in salsa (usually red or green) and topped with ingredients such as cheese, crema (Mexican sour cream), onions, and cilantro."
+}
+```
+
+Windows:
+```powershell
+node test.js
+```
+
+### Messenger Integration
+
+1. Login to [messenger.com](https://www.messenger.com) with an alternative messenger/facebook account
+2. Create a new bookmark in your browser
+3. Copy the code from `bookmarklet.js` into the bookmark's URL field
+4. Click the bookmark to activate the observer
+
+If you encounter any issues:
+1. Verify the image URL is still accessible
+2. Check if your OpenAI API key is valid
+3. Ensure the server is running
+4. Verify your network connection
+
+## Voice Commands
+
+1. "Hey Meta, send a photo to [alternative account name]"
+2. Meta: "Send a photo to [alternative account name]"
+3. You: "Yes"
+
+The API will analyze the image and respond with a description.
+
+## Project Structure
+```
+RaybanAI/
+├── backend/          # Server code
+│   ├── index.js     # Main server
+│   ├── .env         # API keys
+│   └── package.json # Dependencies
+├── 1-setup.sh       # Installation script
+├── 2-testserver.sh  # Test script
+└── bookmarklet.js   # Browser integration
+```
+
+## Credits
+- Original concept and implementation by [Devon Crebbin](https://github.com/dcrebbin)
+- Node.js implementation by [DonPeregrina](https://github.com/DonPeregrina)
+
+## Disclaimer
+This is an experimental integration. Meta Reality Labs may provide official SDKs in the future for more robust implementations.
