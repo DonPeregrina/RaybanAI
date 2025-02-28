@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RaybanAI - MongoDB History</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #444;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .history-item {
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .history-item h3 {
+            margin-top: 0;
+            color: #555;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 8px;
+        }
+        .flex-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+        .image-container {
+            flex: 0 0 200px;
+            max-width: 200px;
+            margin-right: 20px;
+        }
+        .image-container img {
+            max-width: 100%;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+        .content-container {
+            flex: 1;
+            min-width: 300px;
+        }
+        .section {
+            margin-bottom: 15px;
+        }
+        .section-title {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .prompt {
+            padding: 10px;
+            background-color: #e8f4f8;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+        .response {
+            padding: 10px;
+            background-color: #f0f7e6;
+            border-radius: 4px;
+        }
+        .timestamp {
+            font-size: 0.85em;
+            color: #777;
+            margin-bottom: 10px;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .loading {
+            text-align: center;
+            padding: 30px;
+            color: #666;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #2196F3;
+            text-decoration: none;
+        }
+        .back-link:hover {
+            text-decoration: underline;
+        }
+        .no-results {
+            padding: 30px;
+            text-align: center;
+            color: #666;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .debug-info {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: none;
+        }
+        .debug-toggle {
+            margin-top: 20px;
+            color: #666;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">← Back to Dashboard</a>
+    
+    <div class="container">
+        <h1>MongoDB Analysis History</h1>
+        <div id="mongo-status" class="status"></div>
+        
+        <div id="history-container">
+            <div class="loading">Loading history from MongoDB...</div>
+        </div>
+        
+        <div class="debug-toggle" onclick="toggleDebugInfo()">Show Debug Info</div>
+        <div id="debug-info" class="debug-info"></div>
+    </div>
+
+    <script>
+        // Format date to readable format
+        function formatDate(dateString) {
+            const options = { 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric', 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            };
+            return new Date(dateString).toLocaleDateString('en-US', options);
+        }
+        
+        // Mostrar/ocultar información de depuración
+        function toggleDebugInfo() {
+            const debugInfo = document.getElementById('debug-info');
+            if (debugInfo.style.display === 'none' || !debugInfo.style.display) {
+                debugInfo.style.display = 'block';
+            } else {
+                debugInfo.style.display = 'none';
+            }
+        }
+        
+        // Función para diagnosticar problemas de MongoDB
+        async function testMongoConnection() {
+            try {
+                const response = await fetch('/api/mongo-test');
+                const result = await response.json();
+                
+                // Mostrar información de depuración
+                document.getElementById('debug-info').innerHTML = 
+                    `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                
+                return result;
+            } catch (error) {
+                console.error('Error testing MongoDB connection:', error);
+                document.getElementById('debug-info').innerHTML = 
+                    `<pre>Error: ${error.message}</pre>`;
+                return { status: 'error', message: error.message };
+            }
+        }
+        
+        // Get history from MongoDB
+        async function getMongoHistory() {
+            try {
+                const historyContainer = document.getElementById('history-container');
+                const mongoStatus = document.getElementById('mongo-status');
+                
+                // Probar la conexión primero
+                const testResult = await testMongoConnection();
+                
+                // Si MongoDB está deshabilitado o hay un error de conexión
+                if (testResult.status === 'MongoDB disabled') {
+                    mongoStatus.textContent = 'MongoDB storage is currently disabled. Please enable it in the configuration page.';
+                    mongoStatus.className = 'status error';
+                    historyContainer.innerHTML = `
+                        <div class="no-results">
+                            <p>MongoDB storage is disabled.</p>
+                            <p><a href="/config.html" class="btn">Go to Configuration</a></p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Si hay un error en la prueba de conexión
+                if (testResult.status === 'error') {
+                    mongoStatus.textContent = `Error connecting to MongoDB: ${testResult.message}`;
+                    mongoStatus.className = 'status error';
+                    historyContainer.innerHTML = `
+                        <div class="error">
+                            <p>Failed to connect to MongoDB. Please check your connection settings.</p>
+                            <p>Error: ${testResult.message}</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Si la conexión fue exitosa pero no hay documentos
+                if (testResult.documentCount === 0) {
+                    mongoStatus.textContent = 'Connected to MongoDB successfully, but no documents found.';
+                    mongoStatus.style.backgroundColor = '#e8f5e9';
+                    mongoStatus.style.color = '#2e7d32';
+                    historyContainer.innerHTML = '<div class="no-results">No analysis records found in MongoDB.</div>';
+                    return;
+                }
+                
+                // Si todo está bien, intentar obtener los registros
+                const response = await fetch('/api/mongo-history');
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    mongoStatus.textContent = `Error: ${data.error || 'Failed to fetch MongoDB history'}`;
+                    mongoStatus.className = 'status error';
+                    historyContainer.innerHTML = '<div class="error">Failed to fetch history data. See debug info for details.</div>';
+                    return;
+                }
+                
+                const entries = await response.json();
+                
+                if (!entries || entries.length === 0) {
+                    historyContainer.innerHTML = '<div class="no-results">No analysis records found in MongoDB.</div>';
+                    return;
+                }
+                
+                // Success
+                mongoStatus.textContent = `Found ${entries.length} analysis records in MongoDB.`;
+                mongoStatus.style.backgroundColor = '#e8f5e9';
+                mongoStatus.style.color = '#2e7d32';
+                
+                // Clear loading message
+                historyContainer.innerHTML = '';
+                
+                // Add each history item
+                entries.forEach(entry => {
+                    const timestamp = entry.timestamp ? formatDate(entry.timestamp) : 'Unknown date';
+                    const prompt = entry.prompt || 'No prompt information';
+                    const output = entry.openai_output || 'No analysis output';
+                    const imageUrl = `/api/mongo-image/${entry._id}`;
+                    
+                    const historyItem = document.createElement('div');
+                    historyItem.className = 'history-item';
+                    historyItem.innerHTML = `
+                        <h3>Analysis Record</h3>
+                        <div class="timestamp">${timestamp}</div>
+                        <div class="flex-container">
+                            <div class="image-container">
+                                <img src="${imageUrl}" alt="Analyzed image" onerror="this.src='/api/placeholder/200/200';this.onerror=null;this.style.opacity=0.3;">
+                            </div>
+                            <div class="content-container">
+                                <div class="section">
+                                    <div class="section-title">Prompt:</div>
+                                    <div class="prompt">${prompt}</div>
+                                </div>
+                                <div class="section">
+                                    <div class="section-title">Analysis:</div>
+                                    <div class="response">${output}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    historyContainer.appendChild(historyItem);
+                });
+            } catch (error) {
+                console.error('Error fetching MongoDB history:', error);
+                document.getElementById('mongo-status').textContent = 'Error loading MongoDB history: ' + error.message;
+                document.getElementById('mongo-status').className = 'status error';
+                document.getElementById('history-container').innerHTML = 
+                    '<div class="error">Failed to fetch history data from MongoDB. Please check server logs.</div>';
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', getMongoHistory);
+    </script>
+</body>
+</html>

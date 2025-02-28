@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RaybanAI - Meta Rayban Smart Glasses AI Vision</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #444;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        h2 {
+            color: #555;
+            margin-top: 20px;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+        .card h3 {
+            margin-top: 0;
+            color: #555;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #4CAF50;
+            color: white;
+            padding: 8px 15px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .btn-blue {
+            background-color: #2196F3;
+        }
+        .btn-blue:hover {
+            background-color: #0b7dda;
+        }
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 4px;
+            background-color: #e8f5e9;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 0.8em;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RaybanAI</h1>
+        <p>Meta Rayban Smart Glasses GPT4 Vision API Implementation</p>
+        
+        <div class="status" id="server-status">
+            Checking server status...
+        </div>
+        
+        <div class="card">
+            <h3>Server Status</h3>
+            <p>Current API endpoint: <code>http://localhost:3103/api/raybanai</code></p>
+            <p>MongoDB storage: <span id="mongo-status">Checking...</span></p>
+        </div>
+        
+        <div class="card">
+            <h3>Quick Links</h3>
+            <p>
+                <a href="/config.html" class="btn">Configuration</a>
+                <a href="/api/history" class="btn btn-blue" target="_blank">Local JSON History</a>
+                <a href="/mongo-history.html" class="btn btn-blue">MongoDB History</a>
+            </p>
+        </div>
+        
+        <div class="card">
+            <h3>Test the API</h3>
+            <p>You can test the API by running the test script:</p>
+            <pre>./2-testserver.sh</pre>
+            <p>Or by using the following curl command:</p>
+            <pre>curl -X POST \
+    -H "Content-Type: application/json" \
+    -d '{"type":"url","imageUrl":"https://example.com/image.jpg"}' \
+    http://localhost:3103/api/raybanai</pre>
+        </div>
+        
+        <div class="footer">
+            <p>Original concept by Devon Crebbin | Node.js Implementation by DonPeregrina</p>
+        </div>
+    </div>
+
+    <script>
+        // Check server status
+        async function checkServerStatus() {
+            try {
+                const response = await fetch('/api/config');
+                if (response.ok) {
+                    document.getElementById('server-status').textContent = 'Server is running correctly!';
+                    
+                    // Get MongoDB status
+                    const config = await response.json();
+                    const mongoStatus = document.getElementById('mongo-status');
+                    if (config.mongoEnabled) {
+                        mongoStatus.textContent = 'Enabled';
+                        mongoStatus.style.color = 'green';
+                    } else {
+                        mongoStatus.textContent = 'Disabled';
+                        mongoStatus.style.color = 'grey';
+                    }
+                }
+            } catch (error) {
+                document.getElementById('server-status').textContent = 'Server is not running or encountered an error.';
+                document.getElementById('server-status').style.backgroundColor = '#f8d7da';
+                document.getElementById('server-status').style.color = '#721c24';
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', checkServerStatus);
+    </script>
+</body>
+</html>
