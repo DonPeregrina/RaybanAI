@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Colors for messages
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -18,6 +17,31 @@ print_success() {
 print_error() {
     echo -e "${RED}[✘] $1${NC}"
 }
+
+# Check if server is running
+print_message "Checking if server is running..."
+server_status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3103)
+
+if [ "$server_status" == "000" ]; then
+    print_error "Server is not running"
+    print_message "Starting server in background..."
+    
+    # Start server in background
+    cd backend && npm start &
+    
+    # Wait for server to start
+    sleep 3
+    
+    # Check again
+    server_status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3103)
+    if [ "$server_status" == "000" ]; then
+        print_error "Failed to start server"
+        print_message "Please start the server manually: cd backend && npm start"
+        exit 1
+    fi
+fi
+
+print_success "Server is running"
 
 # Test image URL
 IMAGE_URL="https://patijinich.com/wp-content/uploads/2012/10/04_GreenChilaquilesRoastedTomatilloSauce_101_Cropped-copy.jpg"

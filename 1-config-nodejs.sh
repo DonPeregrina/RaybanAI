@@ -1,14 +1,13 @@
 #!/bin/bash
-
 # Colors for messages
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Functions for formatted messages
+# Print formatted messages
 print_message() {
-    echo -e "${BLUE}[RaybanAI]${NC} $1"
+    echo -e "${BLUE}[RaybanAI Setup]${NC} $1"
 }
 
 print_success() {
@@ -19,49 +18,52 @@ print_error() {
     echo -e "${RED}[✘] $1${NC}"
 }
 
-# Check if script is running from RaybanAI folder
-if [[ $(basename "$PWD") != "RaybanAI" ]]; then
-    print_error "This script must be executed from the RaybanAI folder"
+print_message "Starting RaybanAI setup..."
+print_message "Checking for Node.js..."
+
+# Check if Node.js is installed
+if command -v node &> /dev/null; then
+    NODE_VERSION=$(node -v)
+    print_success "Node.js $NODE_VERSION is installed"
+else
+    print_error "Node.js is not installed"
+    print_message "Please install Node.js (version 14 or higher) before continuing"
     exit 1
 fi
 
-# Update system
-print_message "Updating system..."
-sudo apt update && sudo apt upgrade -y
+# Create public directory if it doesn't exist
+print_message "Creating public directory..."
+mkdir -p public
+print_success "Public directory created/confirmed"
 
-# Install system dependencies
-print_message "Installing system dependencies..."
-sudo apt install -y curl git build-essential
-
-# Install Node.js
-print_message "Installing Node.js..."
-if ! command -v node &> /dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-    sudo apt install -y nodejs
-    print_success "Node.js installed successfully"
+# Install dependencies
+print_message "Installing dependencies..."
+cd backend && npm install
+if [ $? -eq 0 ]; then
+    print_success "Dependencies installed successfully"
 else
-    print_success "Node.js is already installed"
+    print_error "Failed to install dependencies"
+    exit 1
 fi
 
-# Verify versions
-NODE_VERSION=$(node --version)
-NPM_VERSION=$(npm --version)
-print_success "Node.js version: $NODE_VERSION"
-print_success "npm version: $NPM_VERSION"
+# Go back to root directory
+cd ..
 
-# Final messages
-print_success "Environment setup completed!"
-print_message "Project structure should be:"
-echo "
-RaybanAI/
-├── backend/
-│   ├── index.js
-│   ├── .env
-│   └── package.json
-└── bookmarklet.js
-"
-print_message "Next steps:"
-print_message "1. Navigate to backend directory: cd backend"
-print_message "2. Install dependencies: npm install"
-print_message "3. Configure your OpenAI API key in .env file"
-print_message "4. Start the server: npm start"
+# Check for .env file
+print_message "Checking for .env file..."
+if [ -f backend/.env ]; then
+    print_success ".env file found"
+else
+    print_message "Creating .env file template..."
+    echo "OPENAI_API_KEY=your-api-key-here" > backend/.env
+    print_success "Created .env file template"
+    print_message "Please edit the backend/.env file and add your OpenAI API key"
+fi
+
+# Make the test script executable
+print_message "Making test script executable..."
+chmod +x 2-testserver.sh
+print_success "Test script is now executable"
+
+print_message "Setup complete! You can now run the server with 'cd backend && npm start'"
+print_message "Or test the API with './2-testserver.sh'"
