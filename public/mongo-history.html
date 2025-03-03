@@ -117,6 +117,7 @@
             text-decoration: none;
             border-radius: 4px;
             font-weight: bold;
+            margin-right: 5px;
         }
         .btn:hover {
             background-color: #45a049;
@@ -135,6 +136,46 @@
             cursor: pointer;
             text-decoration: underline;
         }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+        }
+        .pagination button {
+            background-color: #f1f1f1;
+            border: none;
+            padding: 8px 16px;
+            margin: 0 4px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+        .pagination button.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .pagination button:hover:not(.active) {
+            background-color: #ddd;
+        }
+        .pagination button:disabled {
+            background-color: #f1f1f1;
+            color: #aaa;
+            cursor: not-allowed;
+        }
+        .page-info {
+            text-align: center;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .data-source-toggle {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+        .data-source-toggle label {
+            margin-right: 15px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
@@ -144,8 +185,28 @@
         <h1>MongoDB Analysis History</h1>
         <div id="mongo-status" class="status"></div>
         
+        <div class="data-source-toggle">
+            <label>
+                <input type="radio" name="data-source" value="local" checked> Local MongoDB
+            </label>
+            <label>
+                <input type="radio" name="data-source" value="api"> Atlas API
+            </label>
+        </div>
+        
+        <div class="pagination" id="pagination-top">
+            <button id="prev-btn" disabled>&laquo; Previous</button>
+            <button id="next-btn">Next &raquo;</button>
+        </div>
+        <div id="page-info" class="page-info">Page 1</div>
+        
         <div id="history-container">
             <div class="loading">Loading history from MongoDB...</div>
+        </div>
+        
+        <div class="pagination" id="pagination-bottom">
+            <button id="prev-btn-bottom" disabled>&laquo; Previous</button>
+            <button id="next-btn-bottom">Next &raquo;</button>
         </div>
         
         <div class="debug-toggle" onclick="toggleDebugInfo()">Show Debug Info</div>
@@ -153,6 +214,12 @@
     </div>
 
     <script>
+        // Variables globales
+        let currentPage = 1;
+        let totalPages = 1;
+        let pageSize = 10;
+        let dataSource = 'local'; // 'local' o 'api'
+        
         // Format date to readable format
         function formatDate(dateString) {
             const options = { 
@@ -176,36 +243,204 @@
             }
         }
         
-        // Función para diagnosticar problemas de MongoDB
-        async function testMongoConnection() {
+        // Actualizar controles de paginación
+        function updatePaginationControls() {
+            const prevBtns = [document.getElementById('prev-btn'), document.getElementById('prev-btn-bottom')];
+            const nextBtns = [document.getElementById('next-btn'), document.getElementById('next-btn-bottom')];
+            const pageInfo = document.getElementById('page-info');
+            
+            prevBtns.forEach(btn => {
+                btn.disabled = currentPage <= 1;
+            });
+            
+            nextBtns.forEach(btn => {
+                btn.disabled = currentPage >= totalPages;
+            });
+            
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+        }
+        
+        // Cargar datos de MongoDB usando la API de Atlas
+        // Reemplaza la función loadFromAtlasAPI con esta versión corregida:
+
+        // Reemplaza toda la función loadFromAtlasAPI con esta versión corregida
+
+        async function loadFromAtlasAPI(page = 1) {
             try {
-                const response = await fetch('/api/mongo-test');
-                const result = await response.json();
+                const mongoStatus = document.getElementById('mongo-status');
+                const historyContainer = document.getElementById('history-container');
                 
-                // Mostrar información de depuración
+                mongoStatus.textContent = 'Fetching data from MongoDB Atlas API...';
+                mongoStatus.style.backgroundColor = '#e8f5e9';
+                mongoStatus.style.color = '#2e7d32';
+                
+                historyContainer.innerHTML = '<div class="loading">Loading from Atlas API...</div>';
+                
+                // URL de la API con paginación
+                const apiUrl = `https://eastus2.azure.data.mongodb-api.com/app/application-0-jhzhngv/endpoint/readRayAiData?secret=momo2024&page=${page}`;
+                
+                console.log('Calling API URL:', apiUrl);
+                
+                // Llamada fetch sin Content-Type para evitar preflight CORS issues
+                const response = await fetch(apiUrl, {
+                    method: 'POST'
+                });
+                
+                // Mostrar código de respuesta para depuración
+                console.log('API Response status:', response.status);
+                
+                // Capturar el texto de la respuesta para depuración
+                const responseText = await response.text();
+                console.log('API Response text length:', responseText.length);
+                console.log('API Response text preview:', responseText.substring(0, 100) + '...');
+                
+                // Intentar parsear la respuesta como JSON
+                let data;
+                try {
+                    data = JSON.parse(responseText);
+                } catch (parseError) {
+                    console.error('Error parsing JSON response:', parseError);
+                    throw new Error(`Failed to parse API response: ${responseText.substring(0, 100)}...`);
+                }
+                
+                // Inspeccionar el tipo de datos de la respuesta
+                console.log('API Response data type:', typeof data);
+                console.log('Is array?', Array.isArray(data));
+                
+                // Para inspeccionar mejor la estructura de datos
+                if (typeof data === 'object') {
+                    console.log('Object keys:', Object.keys(data));
+                }
+                
+                // Intentar determinar dónde están los registros
+                let records = null;
+                
+                if (Array.isArray(data)) {
+                    // Si la respuesta es directamente un array
+                    records = data;
+                } else if (data && typeof data === 'object') {
+                    if (Array.isArray(data.records)) {
+                        // Si hay un campo "records" que es un array
+                        records = data.records;
+                    } else if (data.result && Array.isArray(data.result)) {
+                        // Estructura alternativa con campo "result"
+                        records = data.result;
+                    } else if (data.data && Array.isArray(data.data)) {
+                        // Estructura alternativa con campo "data"
+                        records = data.data;
+                    } else {
+                        // Si no hay un array identificable, convierte el objeto a un array si tiene propiedades
+                        const keys = Object.keys(data);
+                        if (keys.length > 0) {
+                            // Si el objeto tiene propiedades, trátalo como un solo registro
+                            records = [data];
+                        }
+                    }
+                }
+                
+                // Verificar después de intentar encontrar los registros
+                if (!records || !Array.isArray(records)) {
+                    // Si aún no tenemos un array, creamos uno vacío para evitar errores
+                    console.warn('Could not identify records array in response, using empty array');
+                    records = [];
+                }
+                
+                // Actualizar información de depuración
                 document.getElementById('debug-info').innerHTML = 
-                    `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                    `<pre>API Response: ${JSON.stringify(data, null, 2)}\n\nExtracted Records: ${JSON.stringify(records, null, 2)}</pre>`;
+                document.getElementById('debug-info').style.display = 'block';
                 
-                return result;
+                if (records.length === 0) {
+                    historyContainer.innerHTML = '<div class="no-results">No analysis records found in MongoDB Atlas.</div>';
+                    mongoStatus.textContent = 'No records found in MongoDB Atlas.';
+                    return;
+                }
+                
+                // Actualizar paginación - usar valores predeterminados si no hay meta
+                currentPage = page;
+                totalPages = data.meta?.totalPages || 1;
+                updatePaginationControls();
+                
+                // Mostrar registros
+                mongoStatus.textContent = `Showing page ${currentPage} of ${totalPages} (${records.length} records)`;
+                
+                // Limpiar contenedor
+                historyContainer.innerHTML = '';
+                
+                // Agregar cada elemento de historial
+                records.forEach(entry => {
+                    const timestamp = entry.timestamp ? formatDate(entry.timestamp) : 'Unknown date';
+                    const prompt = entry.prompt || 'No prompt information';
+                    const output = entry.openai_output || entry.response || 'No analysis output';
+                    
+                    // Usar imageUrl si está disponible, o bien _id para construir una URL de imagen local
+                    let imageUrl;
+                    if (entry.imageUrl) {
+                        imageUrl = entry.imageUrl;
+                    } else if (entry._id) {
+                        imageUrl = `/api/mongo-image/${entry._id}`;
+                    } else {
+                        imageUrl = '/api/placeholder/200/200';
+                    }
+                    
+                    const historyItem = document.createElement('div');
+                    historyItem.className = 'history-item';
+                    historyItem.innerHTML = `
+                        <h3>Analysis Record</h3>
+                        <div class="timestamp">${timestamp}</div>
+                        <div class="flex-container">
+                            <div class="image-container">
+                                <img src="${imageUrl}" alt="Analyzed image" onerror="this.src='/api/placeholder/200/200';this.onerror=null;this.style.opacity=0.3;">
+                            </div>
+                            <div class="content-container">
+                                <div class="section">
+                                    <div class="section-title">Prompt:</div>
+                                    <div class="prompt">${prompt}</div>
+                                </div>
+                                <div class="section">
+                                    <div class="section-title">Analysis:</div>
+                                    <div class="response">${output}</div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    historyContainer.appendChild(historyItem);
+                });
             } catch (error) {
-                console.error('Error testing MongoDB connection:', error);
-                document.getElementById('debug-info').innerHTML = 
-                    `<pre>Error: ${error.message}</pre>`;
-                return { status: 'error', message: error.message };
+                console.error('Error fetching from Atlas API:', error);
+                document.getElementById('mongo-status').textContent = 'Error loading from Atlas API: ' + error.message;
+                document.getElementById('mongo-status').className = 'status error';
+                document.getElementById('history-container').innerHTML = 
+                    `<div class="error">Failed to fetch data from Atlas API: ${error.message}</div>`;
+                
+                // Mostrar información de depuración para ayudar a diagnosticar
+                document.getElementById('debug-info').innerHTML = `
+                    <h4>Error Details:</h4>
+                    <pre>${error.stack || error.message}</pre>
+                    <h4>API URL:</h4>
+                    <pre>https://eastus2.azure.data.mongodb-api.com/app/application-0-jhzhngv/endpoint/readRayAiData?secret=momo2024&page=${page}</pre>
+                `;
+                document.getElementById('debug-info').style.display = 'block';
             }
         }
         
-        // Get history from MongoDB
-        async function getMongoHistory() {
+        // Cargar datos de MongoDB local
+        async function loadFromLocalMongoDB(page = 1) {
             try {
                 const historyContainer = document.getElementById('history-container');
                 const mongoStatus = document.getElementById('mongo-status');
                 
                 // Probar la conexión primero
-                const testResult = await testMongoConnection();
+                const testResult = await fetch('/api/mongo-test');
+                const testData = await testResult.json();
+                
+                // Actualizar información de depuración
+                document.getElementById('debug-info').innerHTML = 
+                    `<pre>${JSON.stringify(testData, null, 2)}</pre>`;
                 
                 // Si MongoDB está deshabilitado o hay un error de conexión
-                if (testResult.status === 'MongoDB disabled') {
+                if (testData.status === 'MongoDB disabled') {
                     mongoStatus.textContent = 'MongoDB storage is currently disabled. Please enable it in the configuration page.';
                     mongoStatus.className = 'status error';
                     historyContainer.innerHTML = `
@@ -218,20 +453,20 @@
                 }
                 
                 // Si hay un error en la prueba de conexión
-                if (testResult.status === 'error') {
-                    mongoStatus.textContent = `Error connecting to MongoDB: ${testResult.message}`;
+                if (testData.status === 'error') {
+                    mongoStatus.textContent = `Error connecting to MongoDB: ${testData.message}`;
                     mongoStatus.className = 'status error';
                     historyContainer.innerHTML = `
                         <div class="error">
                             <p>Failed to connect to MongoDB. Please check your connection settings.</p>
-                            <p>Error: ${testResult.message}</p>
+                            <p>Error: ${testData.message}</p>
                         </div>
                     `;
                     return;
                 }
                 
                 // Si la conexión fue exitosa pero no hay documentos
-                if (testResult.documentCount === 0) {
+                if (testData.documentCount === 0) {
                     mongoStatus.textContent = 'Connected to MongoDB successfully, but no documents found.';
                     mongoStatus.style.backgroundColor = '#e8f5e9';
                     mongoStatus.style.color = '#2e7d32';
@@ -257,8 +492,25 @@
                     return;
                 }
                 
+                // Calcular paginación
+                const totalEntries = entries.length;
+                totalPages = Math.ceil(totalEntries / pageSize);
+                currentPage = page;
+                
+                // Asegurarse de que la página actual es válida
+                if (currentPage < 1) currentPage = 1;
+                if (currentPage > totalPages) currentPage = totalPages;
+                
+                // Actualizar controles de paginación
+                updatePaginationControls();
+                
+                // Calcular índices de inicio y fin para esta página
+                const startIndex = (currentPage - 1) * pageSize;
+                const endIndex = Math.min(startIndex + pageSize, totalEntries);
+                const pageEntries = entries.slice(startIndex, endIndex);
+                
                 // Success
-                mongoStatus.textContent = `Found ${entries.length} analysis records in MongoDB.`;
+                mongoStatus.textContent = `Showing page ${currentPage} of ${totalPages} (${pageEntries.length} of ${totalEntries} records)`;
                 mongoStatus.style.backgroundColor = '#e8f5e9';
                 mongoStatus.style.color = '#2e7d32';
                 
@@ -266,7 +518,7 @@
                 historyContainer.innerHTML = '';
                 
                 // Add each history item
-                entries.forEach(entry => {
+                pageEntries.forEach(entry => {
                     const timestamp = entry.timestamp ? formatDate(entry.timestamp) : 'Unknown date';
                     const prompt = entry.prompt || 'No prompt information';
                     const output = entry.openai_output || 'No analysis output';
@@ -305,8 +557,56 @@
             }
         }
         
+        // Cargar datos según la fuente seleccionada
+        function loadData(page = 1) {
+            if (dataSource === 'api') {
+                loadFromAtlasAPI(page);
+            } else {
+                loadFromLocalMongoDB(page);
+            }
+        }
+        
+        // Event listeners para paginación
+        document.getElementById('prev-btn').addEventListener('click', () => {
+            if (currentPage > 1) {
+                loadData(currentPage - 1);
+            }
+        });
+        
+        document.getElementById('next-btn').addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                loadData(currentPage + 1);
+            }
+        });
+        
+        document.getElementById('prev-btn-bottom').addEventListener('click', () => {
+            if (currentPage > 1) {
+                loadData(currentPage - 1);
+                window.scrollTo(0, 0);
+            }
+        });
+        
+        document.getElementById('next-btn-bottom').addEventListener('click', () => {
+            if (currentPage < totalPages) {
+                loadData(currentPage + 1);
+                window.scrollTo(0, 0);
+            }
+        });
+        
+        // Event listeners para cambio de fuente de datos
+        const dataSourceRadios = document.querySelectorAll('input[name="data-source"]');
+        dataSourceRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                dataSource = e.target.value;
+                currentPage = 1;
+                loadData(currentPage);
+            });
+        });
+        
         // Initialize
-        document.addEventListener('DOMContentLoaded', getMongoHistory);
+        document.addEventListener('DOMContentLoaded', () => {
+            loadData(1);
+        });
     </script>
 </body>
 </html>

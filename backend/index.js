@@ -4,7 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const axios = require('axios');
-const { MongoClient, ObjectId } = require('mongodb');
+const { MongoClient, ObjectId, Binary } = require('mongodb');
 
 // Load environment variables
 dotenv.config();
@@ -13,6 +13,7 @@ dotenv.config();
 const GPT_MODEL = "gpt-4o";
 const COMPLETIONS_ENDPOINT = "https://api.openai.com/v1/chat/completions";
 const PORT = process.env.PORT || 3103;
+const DEDUPE_WINDOW_MS = 3000; // 3 segundos en milisegundos
 
 // Paths
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -25,11 +26,16 @@ const MONGO_URI = process.env.MONGO_URI || '';
 const MONGO_DB = process.env.MONGO_DB || 'raybanai_db';
 const MONGO_COLLECTION = process.env.MONGO_COLLECTION || 'image_analysis';
 
+// Cache para evitar procesamiento duplicado
+const requestCache = new Map();
+
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+// Aumentar límite de tamaño para solicitudes JSON
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Load or create default configuration
@@ -70,6 +76,33 @@ async function saveConfig() {
   } catch (error) {
     console.error('Error saving configuration:', error);
   }
+}
+
+// Función para limpiar entradas antiguas en el cache
+function cleanupOldCacheEntries() {
+  const now = Date.now();
+  for (const [key, timestamp] of requestCache.entries()) {
+    if (now - timestamp > DEDUPE_WINDOW_MS) {
+      requestCache.delete(key);
+    }
+  }
+}
+
+// Ejecutar limpieza periódica cada 30 segundos
+setInterval(cleanupOldCacheEntries, 30000);
+
+// Función para verificar si una petición es duplicada
+function isDuplicateRequest(imageUrl) {
+  const now = Date.now();
+  if (requestCache.has(imageUrl)) {
+    const lastTime = requestCache.get(imageUrl);
+    if (now - lastTime < DEDUPE_WINDOW_MS) {
+      return true;
+    }
+  }
+  // Actualizamos el timestamp de la última solicitud
+  requestCache.set(imageUrl, now);
+  return false;
 }
 
 // Save analysis to log file
@@ -126,8 +159,8 @@ async function saveToMongoDB(prompt, output, imageData) {
 
     console.log('Connecting to MongoDB...');
     const client = new MongoClient(MONGO_URI, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000
+      serverSelectionTimeoutMS: 15000,  // Aumentado a 15 segundos
+      connectTimeoutMS: 15000
     });
     
     await client.connect();
@@ -141,7 +174,7 @@ async function saveToMongoDB(prompt, output, imageData) {
       prompt: prompt,
       openai_output: output,
       extracted_info: null,
-      image: new ObjectId.Binary(imageData)
+      image: new Binary(imageData)  // Corregido: usar Binary directamente
     };
     
     const result = await collection.insertOne(document);
@@ -217,8 +250,8 @@ app.get('/api/mongo-test', async (req, res) => {
     // Intentamos conectar a MongoDB
     console.log('Testing MongoDB connection...');
     const client = new MongoClient(MONGO_URI, {
-      serverSelectionTimeoutMS: 5000, // Timeout de 5 segundos
-      connectTimeoutMS: 5000
+      serverSelectionTimeoutMS: 15000,  // Aumentado a 15 segundos
+      connectTimeoutMS: 15000
     });
     
     await client.connect();
@@ -269,8 +302,8 @@ app.get('/api/mongo-history', async (req, res) => {
     
     // Crear un cliente MongoDB
     const client = new MongoClient(MONGO_URI, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 15000
     });
     
     // Conectar al cliente
@@ -284,14 +317,12 @@ app.get('/api/mongo-history', async (req, res) => {
     
     console.log(`Querying collection: ${MONGO_COLLECTION}`);
     
-    // Obtener todos los datos excepto la imagen binaria
+    // Corregido: usar solo exclusión, no mezclar con inclusión
     const entries = await collection.find({}, {
       projection: { 
         image: 0  // Solo excluimos la imagen, sin intentar incluir otros campos
       }
     }).sort({ timestamp: -1 }).limit(50).toArray();
-
-    
     
     console.log(`Found ${entries.length} entries`);
     
@@ -330,8 +361,8 @@ app.get('/api/mongo-image/:id', async (req, res) => {
     
     // Conectar a MongoDB
     const client = new MongoClient(MONGO_URI, {
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 5000
+      serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 15000
     });
     await client.connect();
     
@@ -375,6 +406,17 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
       throw new Error("No image URL or type provided");
     }
 
+    const imageUrl = body.imageUrl || body.url;
+    
+    // Verificar si es una petición duplicada
+    if (isDuplicateRequest(imageUrl)) {
+      console.log(`Duplicate request detected for image: ${imageUrl}`);
+      return res.status(429).json({ 
+        error: "Duplicate request", 
+        message: "Request for this image was processed less than 3 seconds ago"
+      });
+    }
+
     const token = process.env.OPENAI_API_KEY;
     if (!token) {
       throw new Error('OPENAI_API_KEY not configured');
@@ -388,11 +430,11 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
         {
           role: "user",
           content: [
-            { type: "text", text: "What is in this image?" },
+            { type: "text", text: "You are a food analyzer , you will analyze the main components (carbs , fat, protein , etc) from this image and give back and estimation in grms of each and total calories" },
             {
               type: "image_url",
               image_url: {
-                url: body.imageUrl || body.url,
+                url: imageUrl,
                 detail: "auto"
               }
             }
@@ -418,7 +460,7 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
         console.log('Saving to MongoDB...');
         
         // Fetch the image data
-        const imageResponse = await axios.get(body.imageUrl || body.url, { responseType: 'arraybuffer' });
+        const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
         const imageData = Buffer.from(imageResponse.data, 'binary');
         
         // Save to MongoDB
@@ -439,7 +481,7 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
     }
 
     // Save the response to local storage
-    await saveToLog(body.imageUrl || body.url, analysisResponse, mongoId);
+    await saveToLog(imageUrl, analysisResponse, mongoId);
 
     return res.status(200).json({ response: analysisResponse });
 
@@ -458,5 +500,6 @@ initApp().then(() => {
   app.listen(PORT, () => {
     console.log(`RaybanAI server listening on http://localhost:${PORT}`);
     console.log(`MongoDB integration: ${appConfig.mongoEnabled ? 'Enabled' : 'Disabled'}`);
+    console.log(`Duplicate request prevention: ${DEDUPE_WINDOW_MS/1000} seconds`);
   });
 });

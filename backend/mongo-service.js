@@ -50,12 +50,12 @@ async function saveToMongoDB(uri, dbName, collectionName, prompt, openaiOutput, 
     }
 
     const document = {
-      timestamp: new Date(),
-      prompt: prompt,
-      openai_output: openaiOutput,
-      extracted_info: null, // Not used in this implementation
-      image: new Binary(imageData)
-    };
+        timestamp: new Date(),
+        prompt: prompt,
+        openai_output: output,
+        extracted_info: null,
+        image: new Binary(imageData)  // Usa Binary directamente, no ObjectId.Binary
+      };
 
     const result = await collection.insertOne(document);
     console.log(`Data saved to MongoDB with ID: ${result.insertedId}`);
