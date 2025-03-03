@@ -239,7 +239,7 @@ If image analysis fails:
 
 ## Credits
 
-* Original concept and implementation by Devon Crebbin
+* Original concept and implementation by Devon Crebbin https://github.com/dcrebbin/meta-vision-api
 * Node.js implementation by DonPeregrina
 * MongoDB integration and dashboard by DonPeregrina
 
