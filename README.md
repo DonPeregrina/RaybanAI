@@ -4,16 +4,26 @@
 
 A Node.js implementation for integrating GPT4 Vision into Meta Rayban Smart Glasses using voice commands. This project is based on the original Meta Vision by Devon Crebbin.
 
+## Features
+
+- Analyze images via OpenAI's GPT-4o Vision API
+- Store analysis results locally in JSON format
+- Optional MongoDB integration for more robust storage
+- Web dashboard for configuration and history viewing
+- Messenger integration for receiving images
+- Easy setup with convenient scripts
+
 ## Requirements
 
 * Meta Rayban Smart Glasses
 * OpenAI API Key
 * Alternative Facebook/Messenger account
 * Node.js (version 14 or higher)
+* MongoDB Atlas account (optional)
 
 ## Installation
 
-### Linux
+### Linux/macOS
 
 1. Clone the repository
 2. Navigate to the RaybanAI directory
@@ -41,23 +51,76 @@ npm install
 5. Create a `.env` file in the backend directory with your OpenAI API key:
 
 ```
-OPENAI_API_KEY=your-key-here
+# OpenAI API Key
+OPENAI_API_KEY=your-openai-api-key-here
+
+# Server Configuration
+PORT=3103
+
+# MongoDB Configuration (optional)
+MONGO_ENABLED=false
+MONGO_URI=
+MONGO_DB=
+MONGO_COLLECTION=
 ```
 
 ## Configuration
 
-1. Add your OpenAI API key to the `.env` file in the backend directory
+### Local Storage Only
+
+For a simple setup using only local storage:
+
+1. Edit your `.env` file to disable MongoDB:
+
+```
+MONGO_ENABLED=false
+```
+
 2. Start the server:
-   * Linux: `cd backend && npm start`
-   * Windows: `cd backend && npm start`
+   ```
+   cd backend && npm start
+   ```
+
+### With MongoDB Integration
+
+For advanced storage capabilities with MongoDB:
+
+1. Create a MongoDB Atlas account if you don't have one
+2. Create a cluster and database
+3. Edit your `.env` file with MongoDB details:
+
+```
+MONGO_ENABLED=true
+MONGO_URI=mongodb+srv://your-username:your-password@your-cluster.mongodb.net/
+MONGO_DB=your-database-name
+MONGO_COLLECTION=raybanai_images
+```
+
+4. Start the server:
+   ```
+   cd backend && npm start
+   ```
+
+You can also enable/disable MongoDB from the web dashboard at any time.
+
+## Running the Server
+
+The easiest way to start the server is using the provided restart script:
+
+```
+chmod +x restart.sh
+./restart.sh
+```
+
+This will automatically terminate any existing process using port 3103 and start a new server instance.
+
+Once the server is running, you can access the dashboard at `http://localhost:3103`.
 
 ## Testing
 
-### Test the API
+### Basic API Test
 
-Run the test script to verify everything is working:
-
-#### Linux:
+Run the test script to verify your setup:
 
 ```
 ./2-testserver.sh
@@ -77,11 +140,40 @@ Response:
 }
 ```
 
-#### Windows:
+### MongoDB Test
+
+If you're using MongoDB, you can test the integration with:
 
 ```
-node test.js
+./mongo-test.sh
 ```
+
+This will verify:
+- MongoDB connection status
+- Image analysis and storage
+- Retrieval of stored data
+
+## Web Dashboard
+
+RaybanAI includes a web dashboard accessible at `http://localhost:3103` with the following features:
+
+- Server status monitoring
+- MongoDB configuration
+- View analysis history (both local and MongoDB)
+- Testing tools
+
+### Configuration Page
+
+Access `http://localhost:3103/config.html` to:
+- Enable/disable MongoDB storage
+- View MongoDB connection status
+
+### MongoDB History
+
+Access `http://localhost:3103/mongo-history.html` to:
+- View images stored in MongoDB
+- See analysis results
+- View prompts used for analysis
 
 ## Messenger Integration
 
@@ -109,19 +201,47 @@ The API will analyze the image and respond with a description.
 ```
 RaybanAI/
 ├── backend/          # Server code
-│   ├── index.js     # Main server
-│   ├── .env         # API keys
-│   └── package.json # Dependencies
-├── public/          # Generated analysis files
-├── 1-setup.sh       # Installation script
-├── 2-testserver.sh  # Test script
-└── bookmarklet.js   # Browser integration
+│   ├── index.js      # Main server
+│   ├── mongo-service.js # MongoDB integration
+│   ├── .env          # API keys and configuration
+│   └── package.json  # Dependencies
+├── public/           # Web dashboard and assets
+│   ├── index.html    # Main dashboard
+│   ├── config.html   # Configuration page
+│   └── mongo-history.html # MongoDB history viewer
+├── 1-setup.sh        # Installation script
+├── 2-testserver.sh   # Basic API test script
+├── mongo-test.sh     # MongoDB test script
+├── restart.sh        # Server restart script
+└── bookmarklet.js    # Browser integration
 ```
+
+## Troubleshooting
+
+### MongoDB Connection Issues
+
+If you experience MongoDB connection problems:
+
+1. Verify your connection string in the `.env` file
+2. Make sure your IP is whitelisted in MongoDB Atlas
+3. Check the MongoDB console logs for specific errors
+4. Use the `/api/mongo-test` endpoint for diagnostics
+5. Increase timeouts if needed in index.js
+
+### Image Processing Errors
+
+If image analysis fails:
+
+1. Verify the image URL is accessible
+2. Check your OpenAI API key is valid
+3. Make sure the image format is supported by OpenAI (JPEG, PNG, etc.)
+4. Check server logs for detailed error messages
 
 ## Credits
 
 * Original concept and implementation by Devon Crebbin https://github.com/dcrebbin/meta-vision-api
 * Node.js implementation by DonPeregrina
+* MongoDB integration and dashboard by DonPeregrina
 
 ## Disclaimer
 

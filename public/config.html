@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RaybanAI Configuration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #444;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .mongodb-status {
+            margin-top: 10px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>RaybanAI Configuration</h1>
+        
+        <div class="form-group">
+            <label for="mongo-toggle">MongoDB Storage:</label>
+            <label class="switch">
+                <input type="checkbox" id="mongo-toggle">
+                <span class="slider"></span>
+            </label>
+            <p class="mongodb-status" id="mongodb-status">Loading status...</p>
+        </div>
+
+        <button id="save-config">Save Configuration</button>
+        
+        <div id="status-message" class="status" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Fetch current configuration
+        async function getConfig() {
+            try {
+                const response = await fetch('/api/config');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch configuration');
+                }
+                const config = await response.json();
+                document.getElementById('mongo-toggle').checked = config.mongoEnabled;
+                
+                // Update MongoDB status message
+                updateMongoStatus(config.mongoEnabled);
+                
+                return config;
+            } catch (error) {
+                console.error('Error fetching config:', error);
+                showStatus('Error loading configuration: ' + error.message, false);
+            }
+        }
+
+        // Update configuration
+        async function updateConfig() {
+            try {
+                const mongoEnabled = document.getElementById('mongo-toggle').checked;
+                
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ mongoEnabled }),
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Failed to update configuration');
+                }
+                
+                const result = await response.json();
+                showStatus('Configuration saved successfully!', true);
+                
+                // Update MongoDB status message
+                updateMongoStatus(result.config.mongoEnabled);
+                
+                return result;
+            } catch (error) {
+                console.error('Error updating config:', error);
+                showStatus('Error saving configuration: ' + error.message, false);
+            }
+        }
+
+        // Update MongoDB status message
+        function updateMongoStatus(enabled) {
+            const statusElem = document.getElementById('mongodb-status');
+            if (enabled) {
+                statusElem.textContent = 'MongoDB storage is enabled. Analysis results will be stored in MongoDB.';
+            } else {
+                statusElem.textContent = 'MongoDB storage is disabled. Analysis results will only be stored locally.';
+            }
+        }
+
+        // Show status message
+        function showStatus(message, isSuccess) {
+            const statusElem = document.getElementById('status-message');
+            statusElem.textContent = message;
+            statusElem.className = 'status ' + (isSuccess ? 'success' : 'error');
+            statusElem.style.display = 'block';
+            
+            // Hide message after 5 seconds
+            setTimeout(() => {
+                statusElem.style.display = 'none';
+            }, 5000);
+        }
+
+        // Event listeners
+        document.getElementById('save-config').addEventListener('click', updateConfig);
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', getConfig);
+    </script>
+</body>
+</html>
