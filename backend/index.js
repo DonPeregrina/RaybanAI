@@ -5,6 +5,7 @@ const cors = require('cors');
 const dotenv = require('dotenv');
 const axios = require('axios');
 const { MongoClient, ObjectId, Binary } = require('mongodb');
+const promptService = require('./prompt-service');
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +26,7 @@ const MONGO_ENABLED = process.env.MONGO_ENABLED === 'true' || false;
 const MONGO_URI = process.env.MONGO_URI || '';
 const MONGO_DB = process.env.MONGO_DB || 'raybanai_db';
 const MONGO_COLLECTION = process.env.MONGO_COLLECTION || 'image_analysis';
+const MONGO_PROMPT_COL = process.env.MONGO_PROMPT_COL || 'prompts';
 
 // Cache para evitar procesamiento duplicado
 const requestCache = new Map();
@@ -38,9 +40,11 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
-// Load or create default configuration
+// Default configuration with new prompt settings
 let appConfig = {
-  mongoEnabled: MONGO_ENABLED
+  mongoEnabled: MONGO_ENABLED,
+  useMongoPrompt: false, // Default to using local prompts
+  defaultCategory: 'NutritionAnalysis'
 };
 
 // Ensure directories exist
@@ -106,7 +110,7 @@ function isDuplicateRequest(imageUrl) {
 }
 
 // Save analysis to log file
-async function saveToLog(imageUrl, response, mongoId = null) {
+async function saveToLog(imageUrl, response, promptUsed, mongoId = null) {
   try {
     // Ensure directory exists
     await ensureDirectoryExists(PUBLIC_DIR);
@@ -115,6 +119,7 @@ async function saveToLog(imageUrl, response, mongoId = null) {
       timestamp: new Date().toISOString(),
       imageUrl,
       response,
+      promptUsed,
       mongoId
     };
 
@@ -174,7 +179,7 @@ async function saveToMongoDB(prompt, output, imageData) {
       prompt: prompt,
       openai_output: output,
       extracted_info: null,
-      image: new Binary(imageData)  // Corregido: usar Binary directamente
+      image: new Binary(imageData)
     };
     
     const result = await collection.insertOne(document);
@@ -192,21 +197,29 @@ async function saveToMongoDB(prompt, output, imageData) {
 async function initApp() {
   await ensureDirectoryExists(PUBLIC_DIR);
   await loadConfig();
+  await promptService.initializePromptsFile();
 }
 
 // Routes
 // Get configuration
 app.get('/api/config', (req, res) => {
-  res.status(200).json(appConfig);
+  // Añadir el nombre de la colección de prompts a la respuesta
+  const configResponse = {
+    ...appConfig,
+    promptCollection: MONGO_PROMPT_COL
+  };
+  res.status(200).json(configResponse);
 });
 
 // Update configuration
 app.post('/api/config', async (req, res) => {
   try {
-    const { mongoEnabled } = req.body;
+    const { mongoEnabled, useMongoPrompt, defaultCategory } = req.body;
     
     // Update config
-    appConfig.mongoEnabled = mongoEnabled === true;
+    if (mongoEnabled !== undefined) appConfig.mongoEnabled = mongoEnabled === true;
+    if (useMongoPrompt !== undefined) appConfig.useMongoPrompt = useMongoPrompt === true;
+    if (defaultCategory) appConfig.defaultCategory = defaultCategory;
     
     // Save to file
     await saveConfig();
@@ -215,6 +228,44 @@ app.post('/api/config', async (req, res) => {
   } catch (error) {
     console.error('Error updating config:', error);
     res.status(500).json({ error: 'Failed to update configuration' });
+  }
+});
+
+// Get prompts (local or mongo based on config)
+app.get('/api/prompts', async (req, res) => {
+  try {
+    const prompts = await promptService.getAllPrompts(
+      appConfig, 
+      MONGO_URI, 
+      MONGO_DB, 
+      MONGO_PROMPT_COL
+    );
+    res.status(200).json(prompts);
+  } catch (error) {
+    console.error('Error retrieving prompts:', error);
+    res.status(500).json({ error: 'Failed to retrieve prompts' });
+  }
+});
+
+// Update local prompt
+app.post('/api/prompts', async (req, res) => {
+  try {
+    const { category, prompt } = req.body;
+    
+    if (!category || !prompt) {
+      return res.status(400).json({ error: 'Category and prompt are required' });
+    }
+    
+    const success = await promptService.saveLocalPrompt(category, prompt);
+    
+    if (success) {
+      res.status(200).json({ success: true, message: 'Prompt updated successfully' });
+    } else {
+      res.status(500).json({ error: 'Failed to update prompt' });
+    }
+  } catch (error) {
+    console.error('Error updating prompt:', error);
+    res.status(500).json({ error: 'Failed to update prompt' });
   }
 });
 
@@ -228,7 +279,7 @@ app.get('/api/history', async (req, res) => {
   }
 });
 
-// Endpoint de prueba para MongoDB
+// Modificar el endpoint de prueba de MongoDB para incluir información sobre prompts
 app.get('/api/mongo-test', async (req, res) => {
   try {
     // Enviamos información sobre la configuración
@@ -236,7 +287,9 @@ app.get('/api/mongo-test', async (req, res) => {
       mongoEnabled: appConfig.mongoEnabled,
       mongoUri: MONGO_URI ? (MONGO_URI.substring(0, 20) + '...') : 'not set', // No mostrar URI completa por seguridad
       mongoDb: MONGO_DB,
-      mongoCollection: MONGO_COLLECTION
+      mongoCollection: MONGO_COLLECTION,
+      useMongoPrompt: appConfig.useMongoPrompt,
+      promptCollection: MONGO_PROMPT_COL  // Añadir esta línea
     };
 
     // Si MongoDB no está habilitado, solo enviamos esta información
@@ -265,6 +318,31 @@ app.get('/api/mongo-test', async (req, res) => {
     const count = await collection.countDocuments();
     console.log(`Found ${count} documents in collection`);
     
+    // Probar acceso a colección de prompts
+    let promptCount = 0;
+    let promptsInfo = {};
+    try {
+      const promptCollection = db.collection(MONGO_PROMPT_COL);
+      promptCount = await promptCollection.countDocuments();
+      console.log(`Found ${promptCount} prompts in collection`);
+      
+      // Si hay prompts, obtener una muestra
+      if (promptCount > 0) {
+        const promptSamples = await promptCollection.find({}).limit(5).toArray();
+        promptsInfo = {
+          count: promptCount,
+          samples: promptSamples.map(doc => ({
+            id: doc._id,
+            category: doc.Category || doc.category || 'unknown',
+            promptPreview: doc.Prompt ? `${doc.Prompt.substring(0, 50)}...` : 'No prompt field found'
+          }))
+        };
+      }
+    } catch (promptError) {
+      console.error('Error accessing prompt collection:', promptError);
+      promptsInfo = { error: promptError.message };
+    }
+    
     // Cerramos la conexión
     await client.close();
     
@@ -273,6 +351,7 @@ app.get('/api/mongo-test', async (req, res) => {
       status: "success",
       connectionSuccessful: true,
       documentCount: count,
+      promptsInfo: promptsInfo,
       config
     });
   } catch (error) {
@@ -288,6 +367,7 @@ app.get('/api/mongo-test', async (req, res) => {
     });
   }
 });
+
 
 // MongoDB API endpoints
 app.get('/api/mongo-history', async (req, res) => {
@@ -422,6 +502,20 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
       throw new Error('OPENAI_API_KEY not configured');
     }
 
+    // Get the prompt based on configuration
+    const promptCategory = body.category || appConfig.defaultCategory || 'NutritionAnalysis';
+    console.log(`Using prompt category: ${promptCategory}`);
+    
+    const prompt = await promptService.getPrompt(
+      appConfig,
+      MONGO_URI,
+      MONGO_DB,
+      MONGO_PROMPT_COL,
+      promptCategory
+    );
+    
+    console.log(`Prompt to use (first 50 chars): ${prompt.substring(0, 50)}...`);
+
     console.log('Making request to OpenAI...');
     
     const openAIBody = {
@@ -430,7 +524,7 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
         {
           role: "user",
           content: [
-            { type: "text", text: "You are a food analyzer , you will analyze the main components (carbs , fat, protein , etc) from this image and give back and estimation in grms of each and total calories" },
+            { type: "text", text: prompt },
             {
               type: "image_url",
               image_url: {
@@ -465,7 +559,7 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
         
         // Save to MongoDB
         mongoId = await saveToMongoDB(
-          "What is in this image?", // Using default prompt
+          prompt, // Using the actual prompt that was used
           analysisResponse,
           imageData
         );
@@ -481,7 +575,7 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
     }
 
     // Save the response to local storage
-    await saveToLog(imageUrl, analysisResponse, mongoId);
+    await saveToLog(imageUrl, analysisResponse, prompt, mongoId);
 
     return res.status(200).json({ response: analysisResponse });
 
@@ -495,11 +589,79 @@ app.post(['/api/raybanai', '/api/gpt-4-vision'], async (req, res) => {
   }
 });
 
+// Endpoint para probar la recuperación de prompts
+app.get('/api/prompt-debug', async (req, res) => {
+  try {
+    const category = req.query.category || appConfig.defaultCategory || 'NutritionAnalysis';
+    const source = req.query.source || 'auto'; // 'auto', 'mongo', 'local'
+    
+    let prompt;
+    let sourceUsed;
+    
+    if (source === 'mongo') {
+      // Forzar uso de MongoDB
+      prompt = await promptService.getMongoPrompt(
+        MONGO_URI,
+        MONGO_DB,
+        MONGO_PROMPT_COL,
+        category
+      );
+      sourceUsed = 'mongo';
+    } else if (source === 'local') {
+      // Forzar uso de local
+      prompt = await promptService.getLocalPrompt(category);
+      sourceUsed = 'local';
+    } else {
+      // Usar configuración actual
+      prompt = await promptService.getPrompt(
+        appConfig,
+        MONGO_URI,
+        MONGO_DB,
+        MONGO_PROMPT_COL,
+        category
+      );
+      sourceUsed = appConfig.useMongoPrompt && appConfig.mongoEnabled ? 'mongo' : 'local';
+    }
+    
+    // Información de diagnóstico
+    const diagnosticInfo = {
+      config: {
+        mongoEnabled: appConfig.mongoEnabled,
+        useMongoPrompt: appConfig.useMongoPrompt,
+        defaultCategory: appConfig.defaultCategory,
+        mongoDb: MONGO_DB,
+        promptCollection: MONGO_PROMPT_COL,
+        requestedCategory: category,
+        sourceRequested: source,
+        sourceUsed: sourceUsed
+      },
+      promptInfo: {
+        length: prompt ? prompt.length : 0,
+        preview: prompt ? (prompt.length > 100 ? prompt.substring(0, 100) + '...' : prompt) : 'No prompt found'
+      }
+    };
+    
+    res.status(200).json({
+      prompt,
+      diagnosticInfo
+    });
+  } catch (error) {
+    console.error('Error in prompt debug endpoint:', error);
+    res.status(500).json({
+      error: 'Failed to retrieve prompt',
+      message: error.message,
+      stack: error.stack
+    });
+  }
+});
+
 // Initialize and start server
 initApp().then(() => {
   app.listen(PORT, () => {
     console.log(`RaybanAI server listening on http://localhost:${PORT}`);
     console.log(`MongoDB integration: ${appConfig.mongoEnabled ? 'Enabled' : 'Disabled'}`);
+    console.log(`Prompt source: ${appConfig.useMongoPrompt ? 'MongoDB' : 'Local'}`);
+    console.log(`Default prompt category: ${appConfig.defaultCategory}`);
     console.log(`Duplicate request prevention: ${DEDUPE_WINDOW_MS/1000} seconds`);
   });
 });

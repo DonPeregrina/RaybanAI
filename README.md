@@ -38,10 +38,10 @@ This will install all necessary dependencies and set up your environment.
 
 ### Windows
 
-1. Install Node.js
+1. Install Node.js from the [official website](https://nodejs.org/)
 2. Clone the repository
 3. Navigate to the RaybanAI directory
-4. Open PowerShell as administrator and run:
+4. Open Command Prompt and run:
 
 ```
 cd backend
@@ -80,6 +80,10 @@ MONGO_ENABLED=false
    ```
    cd backend && npm start
    ```
+   
+
+   
+
 
 ### With MongoDB Integration
 
@@ -115,6 +119,10 @@ chmod +x restart.sh
 This will automatically terminate any existing process using port 3103 and start a new server instance.
 
 Once the server is running, you can access the dashboard at `http://localhost:3103`.
+
+#### Running the Server on Windows
+
+You can use the  `restart.bat` file in the main directory every time you want to start or restart server
 
 ## Testing
 
